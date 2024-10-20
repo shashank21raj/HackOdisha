@@ -6,11 +6,13 @@ export const Testing = () => {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [imageSrc, setImageSrc] = useState(null);
   const [cardNumber, setCardNumber] = useState('');
+  const [statusMessage, setStatusMessage] = useState(''); // New state for status message
   const webcamRef = useRef(null);
 
   const handleCameraToggle = () => {
     setIsCameraActive(!isCameraActive);
-    setImageSrc(null); // Reset the image when the camera is toggled
+    setImageSrc(null);
+    setStatusMessage('');
   };
 
   const handleCapture = () => {
@@ -28,34 +30,38 @@ export const Testing = () => {
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    console.log('Captured image:', imageSrc);
-    console.log('Card number:', cardNumber);
-  
+    e.preventDefault();  
     try {
       const formData = new FormData();
       formData.append('image', imageSrc);
       formData.append('account_number', cardNumber);
+
       if (imageSrc && cardNumber) {
         const res = await axios.post('http://127.0.0.1:5001/test', formData, {
           headers: {
             'Content-Type': 'multipart/form-data',
           }
         });
-        console.log(res);
+
+        // Check for success status in the response
+        if (res.data.status === 'success') {
+          setStatusMessage('Face recognized successfully! Access granted.');
+        } else {
+          setStatusMessage('Face recognition failed. Please try again.');
+        }
       }
     } catch (error) {
       console.log("Error in sending the file", error);
+      setStatusMessage('An error occurred. Please try again.');
     }
-  }
+  };
   
 
   return (
     <div className="h-screen bg-purple-300">
       <div className="flex justify-between">
-        {/* Left side: Webcam and Controls */}
         <div className="h-screen w-3/4 flex flex-col items-center justify-center">
-          <div className="w-auto h-auto bg-black flex justify-center items-center">
+          <div className="w-[640px] h-[480px] bg-black flex justify-center items-center">
             {isCameraActive && !imageSrc ? (
               <Webcam
                 audio={false}
@@ -87,7 +93,6 @@ export const Testing = () => {
           </div>
         </div>
 
-        {/* Right side: Card Number Input */}
         <div className="h-screen w-1/4 flex flex-col justify-center items-center">
           <label className="text-xl font-bold mb-4">Enter Card Number</label>
           <input
@@ -99,7 +104,26 @@ export const Testing = () => {
             maxLength="16"
             required
           />
-          <button className=' bg-red-600 text-xl rounded-lg m-4 p-2' onClick={handleSubmit}>Submit</button>
+
+          <button
+            className="bg-red-600 text-xl rounded-lg m-4 p-2"
+            onClick={handleSubmit}
+          >
+            Submit
+          </button>
+
+          {/* Conditionally render the status message */}
+          {statusMessage && (
+            <div
+              className={`mt-4 p-3 text-white text-center rounded-lg ${
+                statusMessage.includes('success')
+                  ? 'bg-green-500'
+                  : 'bg-red-500'
+              }`}
+            >
+              {statusMessage}
+            </div>
+          )}
         </div>
       </div>
     </div>

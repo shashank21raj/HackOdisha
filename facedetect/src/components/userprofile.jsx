@@ -2,7 +2,9 @@ import React, { useEffect, useState } from "react";
 import { db,storage } from "../firebase";
 import {v4} from 'uuid';
 import {getDownloadURL,uploadBytes,ref } from "firebase/storage";
-import {collection,addDoc,getDocs}from 'firebase/firestore'
+import {collection,addDoc,getDocs, query, where, deleteDoc, doc}from 'firebase/firestore'
+import { auth } from "../firebase";
+import axios from "axios";
 
 // Card Form Modal Component
 const PeopleFormModal = ({ setShowModal, addPerson, cardNumber }) => {
@@ -46,8 +48,11 @@ const PeopleFormModal = ({ setShowModal, addPerson, cardNumber }) => {
         });
         console.log("Document written with ID: ", docRef.id);
       }
-  
       setShowModal(false);
+      const form=new FormData();
+      form.append('account_number', cardNumber);
+      const res=await axios.post('http://127.0.0.1:5001/encode',form)
+      console.log(res)
     } catch (error) {
       console.error("Error in adding person to Firestore: ", error);
     }
@@ -107,6 +112,113 @@ const PeopleFormModal = ({ setShowModal, addPerson, cardNumber }) => {
     </div>
   );
 };
+const CardFormModal = ({ setShowCardModel,addCard}) => {
+  const [formData, setFormData] = useState({
+    holderName: "",
+    cardNumber: "",
+    cardType: "",
+    uid:""
+  });
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData({
+      ...formData,
+      [name]: value,
+    });
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+        const currentUser=auth.currentUser.uid
+        console.log(currentUser)
+
+        await addDoc(collection(db,'cards'),{
+          cardNumber:formData.cardNumber,
+          holderName: formData.holderName,
+          cardType: formData.cardType,
+          uid:currentUser,
+        });
+        addCard({
+          cardNumber:formData.cardNumber,
+          cardType:formData.cardType,
+          uid:currentUser,
+          holderName:formData.holderName
+        });
+        setShowCardModel(false);
+      }
+     catch (error) {
+      console.error("Error in adding person to Firestore: ", error);
+    }
+  };
+
+  return (
+    <div className="fixed top-0 left-0 w-full h-full bg-black bg-opacity-70 flex justify-center items-center">
+      <div className="w-4/5 p-8 bg-white rounded-md shadow-md">
+        <h2 className="text-2xl font-bold text-gray-800 mb-4">
+          Add New Card
+        </h2>
+        <form onSubmit={handleSubmit}>
+          <div className="mb-4">
+            <label className="block text-gray-700 text-sm font-bold mb-2">
+              Card Number
+            </label>
+            <input
+              type="text"
+              name="cardNumber"
+              value={formData.cardNumber}
+              onChange={handleChange}
+              className="appearance-none border rounded w-full py-2 px-3 text-gray-700"
+              placeholder="2104569"
+              
+            />
+          </div>
+          <div className="mb-4">
+            <label className="block text-gray-700 text-sm font-bold mb-2">
+              Card Holder Name
+            </label>
+            <input
+              type="text"
+              name="holderName"
+              value={formData.holderName}
+              onChange={handleChange}
+              className="appearance-none border rounded w-full py-2 px-3 text-gray-700"
+              placeholder="John Doe"
+            />
+          </div>
+          <div className="mb-4">
+            <label className="block text-gray-700 text-sm font-bold mb-2">
+              Card Type
+            </label>
+            <input
+              type="text"
+              name="cardType"
+              value={formData.cardType}
+              onChange={handleChange}
+              className="appearance-none border rounded w-full py-2 px-3 text-gray-700"
+              placeholder="Visa"
+            />
+          </div>
+          <div className="flex space-x-4">
+            <button
+              type="submit"
+              className="bg-green-500 text-white px-4 py-2 rounded-full"
+            >
+              Submit
+            </button>
+            <button
+              type="button"
+              className="bg-red-500 text-white px-4 py-2 rounded-full"
+              onClick={() => setShowCardModel(false)}
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
 
 export const UserProfileContainer = () => {
   const [currentHover, setCurrentHover] = useState(null);
@@ -115,27 +227,29 @@ export const UserProfileContainer = () => {
   const [people, setPeople] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [currentCardNumber, setCurrentCardNumber] = useState("");
+  const [showCardModel, setShowCardModel] = useState(null)
+  const [cardData,setCardData]=useState([])
 
-  const cardData = [
-    {
-      id: 1,
-      cardNumber: "2104568",
-      holderName: "John Doe",
-      cardType: "Debit Card",
-    },
-    {
-      id: 2,
-      cardNumber: "2104569",
-      holderName: "Jane Smith",
-      cardType: "Credit Card",
-    },
-    {
-      id: 3,
-      cardNumber: "2104570",
-      holderName: "Alice Brown",
-      cardType: "MasterCard",
-    },
-  ];
+  // const cardData = [
+  //   {
+  //     id: 1,
+  //     cardNumber: "2104568",
+  //     holderName: "John Doe",
+  //     cardType: "Debit Card",
+  //   },
+  //   {
+  //     id: 2,
+  //     cardNumber: "2104569",
+  //     holderName: "Jane Smith",
+  //     cardType: "Credit Card",
+  //   },
+  //   {
+  //     id: 3,
+  //     cardNumber: "2104570",
+  //     holderName: "Alice Brown",
+  //     cardType: "MasterCard",
+  //   },
+  // ];
 
   const deletePerson=(id)=>{
     setPeople(prevPeople=>prevPeople.filter(person=>person.cardId!==id))
@@ -144,23 +258,88 @@ export const UserProfileContainer = () => {
     setPeople((prevPeople) => [...prevPeople, newPerson]);
   };
   
-  useEffect(()=>{
-    const getAllPeopleData=async()=>{
-      try {
-        const snapshot=await getDocs(collection(db,'people'));
-        const peopleData=snapshot.docs.map(doc=>({
-          cardnumber:doc.data().cardnumber,
-          holderName:doc.data().holderName,
-          imageSrc:doc.data().imageSrc,
-        }))
-        setPeople(peopleData);
-        console.log("Data fetched successfully",peopleData)
-      } catch (error) {
-        console.log("Error in fetching the data",error)
+  const addCard = (newCard) => {
+    setCardData((prevPeople)=>[...cardData,newCard])
+  }
+
+  const deleteCard = async (cardNumber) => {
+    try {
+      const cardQuery = query(collection(db, "cards"), where("cardNumber", "==", cardNumber));
+      const cardQuerySnapshot = await getDocs(cardQuery);
+  
+      if (!cardQuerySnapshot.empty) {
+        cardQuerySnapshot.forEach(async (docSnap) => {
+          await deleteDoc(doc(db, "cards", docSnap.id));
+          setCardData((prevCards) => prevCards.filter((card) => card.cardNumber !== cardNumber));
+        });
+  
+        console.log("Card deleted successfully");
+  
+        const peopleQuery = query(collection(db, "people"), where("cardnumber", "==", cardNumber));
+        const peopleQuerySnapshot = await getDocs(peopleQuery);
+  
+        if (!peopleQuerySnapshot.empty) {
+          peopleQuerySnapshot.forEach(async (docSnap) => {
+            await deleteDoc(doc(db, "people", docSnap.id));
+            setPeople((prevPeople) => prevPeople.filter((person) => person.cardnumber !== cardNumber));
+          });
+  
+          console.log("Associated people deleted successfully");
+        } else {
+          console.log("No people found with the provided cardNumber");
+        }
+      } else {
+        console.log("No card found with the provided cardNumber");
       }
+    } catch (error) {
+      console.log("Error in deleting the card and people", error);
     }
-    getAllPeopleData();
-  },[])
+  };
+
+
+  useEffect(() => {
+    const getAllPeopleData = async (cardNumbers) => {
+      try {
+        const q = query(collection(db, 'people'), where('cardnumber', 'in', cardNumbers));
+        const snapshot = await getDocs(q);
+  
+        const peopleData = snapshot.docs.map((doc) => ({
+          cardnumber: doc.data().cardnumber,
+          holderName: doc.data().holderName,
+          imageSrc: doc.data().imageSrc,
+        }));
+  
+        setPeople(peopleData);
+        console.log("Filtered People Data:", peopleData);
+      } catch (error) {
+        console.log("Error in fetching people data", error);
+      }
+    };
+  
+    const getAllCardData = async () => {
+      try {
+        const uid = auth.currentUser.uid;
+        const q = query(collection(db, "cards"), where("uid", "==", uid));
+        const snapshot = await getDocs(q);
+        const cardData = snapshot.docs.map((doc) => ({
+          cardNumber: doc.data().cardNumber,
+          holderName: doc.data().holderName,
+          cardType: doc.data().cardType,
+        }));
+        setCardData(cardData);  
+        const cardNumbers = cardData.map((card) => card.cardNumber);
+        if (cardNumbers.length > 0) {
+          getAllPeopleData(cardNumbers);
+        }
+      } catch (error) {
+        console.log("Error in getting card data", error);
+      }
+    };
+  
+    getAllCardData();
+  }, []);
+  
+  
 
 
   return (
@@ -173,11 +352,12 @@ export const UserProfileContainer = () => {
               className="relative p-4 m-4 w-80 h-48 rounded-md bg-purple-200 shadow-lg cursor-pointer hover:bg-purple-300 hover:shadow-2xl"
               onMouseEnter={() => setCurrentHover(card.cardNumber)}
               onMouseLeave={() => setCurrentHover(null)}
+
+            >
+              <div className="w-full h-full p-4 bg-purple-100 rounded-lg shadow-md"
               onClick={() => {
                 setSelectedcard(card.cardNumber);
-              }}
-            >
-              <div className="w-full h-full p-4 bg-purple-100 rounded-lg shadow-md">
+              }}>
                 <div className="flex flex-col items-start">
                   <span className="text-xl font-bold text-gray-800">
                     {card.cardType}
@@ -203,9 +383,7 @@ export const UserProfileContainer = () => {
                   </button>
                   <button
                     className="bg-red-500 text-white px-2 py-1 rounded"
-                    onClick={() => {
-                      // Add your delete logic here
-                    }}
+                    onClick={() => { deleteCard(card.cardNumber)}}
                   >
                     Delete
                   </button>
@@ -214,6 +392,13 @@ export const UserProfileContainer = () => {
             </div>
           ))}
         </div>
+        <button className=" bg-green-500 p-4  m-2  rounded-xl" onClick={()=>{
+          setShowCardModel(true);
+        }}><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" 
+        className="size-8">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+      </svg>
+      </button>
       </div>
 
       {selectedCard && (
@@ -263,6 +448,15 @@ export const UserProfileContainer = () => {
           addPerson={addPerson}
           cardNumber={currentCardNumber} // Pass the card number to the modal
         />
+      )}
+      {showCardModel && (
+        
+        <>
+        <CardFormModal 
+        setShowCardModel={setShowCardModel}
+        addCard={addCard}
+        />
+        </>
       )}
     </div>
   );
